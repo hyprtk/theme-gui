@@ -75,4 +75,4 @@ src/theme_gui/
 
 ## License
 
-Apache-2.0.
+GPL-2.0.
