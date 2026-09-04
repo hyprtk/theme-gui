@@ -20,7 +20,7 @@ from .modules.rofi import RofiPage
 from .modules.sddm import SddmPage
 from .modules.swaylock import SwaylockPage
 from .modules.wallpaper import WallpaperPage
-from .modules.waybar import WaybarPage
+from .modules.bar import BarPage
 
 # ── Page registry (single source of truth) ──────────────────────────────────
 
@@ -28,7 +28,7 @@ PAGES: dict[str, tuple[str, str, type]] = {
     "wallpaper": ("Wallpaper", "image-x-generic-symbolic", WallpaperPage),
     "pywal": ("Pywal Colors", "colors-symbolic", PywalPage),
     "rofi": ("Rofi Themes", "view-app-grid-symbolic", RofiPage),
-    "waybar": ("Waybar Themes", "view-dual-symbolic", WaybarPage),
+    "bar": ("Bar Themes", "view-dual-symbolic", BarPage),
     "matuwall": ("Matuwall", "folder-pictures-symbolic", MatuwallPage),
     "swaylock": ("Swaylock", "system-lock-screen-symbolic", SwaylockPage),
     "icons": ("Icons", "folder-symbolic", IconsPage),

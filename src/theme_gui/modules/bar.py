@@ -1,6 +1,7 @@
-"""Waybar theme manager with error handling and loading feedback."""
+"""hyprtk-bar theme manager with error handling and loading feedback."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -14,9 +15,9 @@ from ..widgets import BasePage, remove_all_children, show_toast
 log = logging.getLogger(__name__)
 
 
-class WaybarPage(BasePage):
+class BarPage(BasePage):
     def __init__(self, **kwargs):
-        super().__init__(title="Waybar Themes", **kwargs)
+        super().__init__(title="Bar Themes", **kwargs)
         self._active_theme = ""
 
         # active theme indicator
@@ -31,9 +32,9 @@ class WaybarPage(BasePage):
         self._box.append(self._theme_list)
 
         # manual refresh button
-        launch_btn = Gtk.Button(label="Refresh Waybar")
+        launch_btn = Gtk.Button(label="Restart Bar")
         launch_btn.add_css_class("flat")
-        launch_btn.connect("clicked", self._launch_waybar)
+        launch_btn.connect("clicked", self._restart_bar)
         self._box.append(launch_btn)
 
         self._refresh()
@@ -44,26 +45,27 @@ class WaybarPage(BasePage):
         self._load_themes()
 
     def _load_active(self):
-        cache = paths.THEME_STYLE_CACHE
         self._active_theme = ""
         try:
-            if cache.exists():
-                content = cache.read_text().strip()
-                if ";" in content:
-                    parts = content.split(";")
-                    self._active_theme = Path(parts[0]).name
-                elif content:
-                    self._active_theme = Path(content).name
-                self._active_label.set_text(f"Active theme: {self._active_theme}")
-            else:
-                self._active_label.set_text("Active theme: (none)")
-        except (OSError, ValueError):
-            self._active_label.set_text("Active theme: (error)")
+            cfg = json.loads(paths.BAR_CONFIG.read_text())
+        except (OSError, json.JSONDecodeError):
+            self._active_label.set_text("Active theme: (none)")
+            return
+
+        theme = cfg.get("theme") or {}
+        source = theme.get("source", "pywal")
+        name = theme.get("waybar_theme") or ""
+        if source == "waybar" and name:
+            self._active_theme = Path(name).name
+            self._active_label.set_text(f"Active theme: {self._active_theme}")
+        else:
+            self._active_theme = ""
+            self._active_label.set_text("Active theme: (pywal / none)")
 
     def _load_themes(self):
         remove_all_children(self._theme_list)
 
-        themes_dir = paths.WAYBAR_THEMES
+        themes_dir = paths.BAR_THEMES
         if not themes_dir.exists():
             return
 
@@ -101,31 +103,39 @@ class WaybarPage(BasePage):
         theme_dir = row._theme_dir
         theme_name = theme_dir.name
 
-        cache = paths.THEME_STYLE_CACHE
         try:
-            cache.parent.mkdir(parents=True, exist_ok=True)
-            cache.write_text(f"/{theme_name};/{theme_name}")
+            cfg = json.loads(paths.BAR_CONFIG.read_text())
+        except (OSError, json.JSONDecodeError):
+            cfg = {}
+        cfg.setdefault("theme", {})
+        cfg["theme"]["source"] = "waybar"
+        cfg["theme"]["waybar_theme"] = theme_name
+        try:
+            paths.BAR_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+            paths.BAR_CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
         except OSError as exc:
-            log.warning("Failed to write theme cache: %s", exc)
+            log.warning("Failed to write bar config: %s", exc)
+            show_toast(self, "Failed to write bar config", timeout=4)
+            return
 
-        # sync rofi
-        self._run_script(paths.SYNC_ROFI_SH, "rofi sync")
-
-        # restart waybar
-        self._run_script(paths.WAYBAR_LAUNCH_SH, "waybar launch")
-
+        self._restart_bar(None)
         self._refresh()
-        show_toast(self, f"Waybar restarted with {theme_name}")
+        show_toast(self, f"Bar restarted with {theme_name}")
 
-    def _launch_waybar(self, btn):
-        self._run_script(paths.WAYBAR_LAUNCH_SH, "waybar launch")
-
-    def _run_script(self, script_path, label: str):
-        if not script_path.is_file():
-            show_toast(self, f"{label} script not found", timeout=4)
+    def _restart_bar(self, btn):
+        """Restart hyprtk-bar so the new theme is picked up."""
+        launcher = paths.BAR_LAUNCHER
+        if not launcher.is_file():
+            show_toast(self, "hyprtk-bar launcher not found", timeout=4)
             return
         try:
-            subprocess.Popen(["bash", str(script_path)], start_new_session=True)
-        except FileNotFoundError as exc:
-            log.warning("%s failed: %s", label, exc)
-            show_toast(self, f"Failed to run {label}", timeout=4)
+            subprocess.Popen(
+                [
+                    "bash", "-c",
+                    f"pkill -f hyprtk_bar; sleep 0.5; setsid {launcher} &",
+                ],
+                start_new_session=True,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("failed to restart bar: %s", exc)
+            show_toast(self, "Failed to restart bar", timeout=4)

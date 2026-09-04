@@ -2,8 +2,8 @@
 
 A GTK4/Adwaita theme manager for the Hyprland desktop, written in Python. It
 gives you a single window to pick a wallpaper, regenerate pywal colors, and
-apply matching themes across rofi, waybar, swaylock, icons, and SDDM/GRUB —
-all tinted with your active pywal palette.
+apply matching themes across rofi, the hyprtk-bar, swaylock, icons, and
+SDDM/GRUB — all tinted with your active pywal palette.
 
 ## Features
 
@@ -12,8 +12,8 @@ all tinted with your active pywal palette.
 - **Pywal Colors** — load pywal color schemes, tweak individual colors, re-run
   `wal` on your wallpaper, and rebuild the cache
 - **Rofi Themes** — browse and apply rofi themes
-- **Waybar Themes** — list installed waybar themes, see the active one, and
-  apply/launch from the GUI
+- **Bar Themes** — list installed hyprtk-bar themes, see the active one, and
+  apply / restart the bar from the GUI
 - **Matuwall** — manage matuwall wallpaper generation
 - **Swaylock** — apply themed lock-screen config
 - **Icons** — switch icon themes
@@ -58,7 +58,7 @@ hyprtk-themer      # alias desktop launcher
 
 - python3, python-gobject (PyGObject), pycairo
 - gtk4, libadwaita
-- pywal16 (and the target tools: rofi, waybar, swaylock, sddm, matuwall)
+- pywal16 (and the target tools: rofi, hyprtk-bar, swaylock, sddm, matuwall)
 
 ## Structure
 
@@ -69,7 +69,7 @@ src/theme_gui/
 ├── config.py     # config persistence (atomic writes)
 ├── cache.py      # wallpaper thumbnail index
 ├── paths.py      # app paths
-└── modules/      # one page per target (wallpaper, pywal, rofi, waybar,
+└── modules/      # one page per target (wallpaper, pywal, rofi, bar,
                   # matuwall, swaylock, icons, sddm)
 ```
 

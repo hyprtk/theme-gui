@@ -11,8 +11,8 @@ WAL_COLORS = WAL_CACHE / "colors"
 
 # ── live configs ──────────────────────────────────────────────
 CONFIG = HOME / ".config"
-WAYBAR_CONFIG = CONFIG / "waybar"
-WAYBAR_THEMES = WAYBAR_CONFIG / "themes"
+BAR_CONFIG = CONFIG / "hyprtk-bar" / "config.json"
+BAR_THEMES = CONFIG / "hyprtk-bar" / "themes"
 THEME_STYLE_CACHE = WAL_CACHE.parent / ".themestyle.sh"
 
 ROFI_CONFIG = CONFIG / "rofi"
@@ -26,7 +26,7 @@ MATUWALL_CONFIG = CONFIG / "matuwall" / "config.json"
 HYPRTK_SCRIPTS = HYPRTK / "hypr" / "scripts"
 WALLPAPER_COLORS_SH = HYPRTK_SCRIPTS / "wallpaper-colors.sh"
 CHANGE_ICONS_SH = HYPRTK / "configs" / "papirus-icons" / "scripts" / "change-icons.sh"
-WAYBAR_LAUNCH_SH = HYPRTK / "configs" / "waybar" / "launch.sh"
+BAR_LAUNCHER = HOME / ".local" / "bin" / "hyprtk-bar"
 SYNC_ROFI_SH = HYPRTK / "configs" / "rofi" / "scripts" / "sync-rofi-theme.sh"
 
 # ── wallpaper directories ─────────────────────────────────────

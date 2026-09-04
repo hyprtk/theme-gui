@@ -32,7 +32,7 @@ class RofiPage(BasePage):
         # regenerate button
         apply_btn = Gtk.Button(label="Regenerate from Pywal")
         apply_btn.add_css_class("flat")
-        apply_btn.connect("clicked", self._sync_to_waybar)
+        apply_btn.connect("clicked", self._regenerate)
         self._box.append(apply_btn)
 
         self._refresh()
@@ -83,7 +83,7 @@ class RofiPage(BasePage):
         self._refresh()
         show_toast(self, f"Rofi variant: {variant_path.stem}")
 
-    def _sync_to_waybar(self, btn):
+    def _regenerate(self, btn):
         self._run_script(paths.SYNC_ROFI_SH, "rofi sync")
         self._refresh()
         show_toast(self, "Regenerated rofi variant from pywal")
