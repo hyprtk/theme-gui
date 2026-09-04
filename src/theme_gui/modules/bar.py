@@ -123,7 +123,14 @@ class BarPage(BasePage):
         show_toast(self, f"Bar restarted with {theme_name}")
 
     def _restart_bar(self, btn):
-        """Restart hyprtk-bar so the new theme is picked up."""
+        """Restart hyprtk-bar so the new theme is picked up.
+
+        pkill must match the bar's invocation (``python3 -m hyprtk_bar``) and
+        not the ``bash -c`` wrapper itself. The ``[h]yprtk_bar`` character
+        class trick makes the pattern not match this wrapper's own command line
+        (which contains the literal ``[h]yprtk_bar``), so pkill only kills the
+        bar.
+        """
         launcher = paths.BAR_LAUNCHER
         if not launcher.is_file():
             show_toast(self, "hyprtk-bar launcher not found", timeout=4)
@@ -132,7 +139,8 @@ class BarPage(BasePage):
             subprocess.Popen(
                 [
                     "bash", "-c",
-                    f"pkill -f hyprtk_bar; sleep 0.5; setsid {launcher} &",
+                    f"pkill -f '[h]yprtk_bar'; "
+                    f"sleep 0.5; setsid {launcher} &",
                 ],
                 start_new_session=True,
             )
