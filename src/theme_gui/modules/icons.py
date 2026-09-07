@@ -1,4 +1,4 @@
-"""Icon theme manager with pywal auto-color and manual presets."""
+"""Icon theme manager with pywal auto-color and manual presets (GTK3)."""
 from __future__ import annotations
 
 import logging
@@ -6,10 +6,15 @@ import os
 import subprocess
 from pathlib import Path
 
-from gi.repository import Adw, GLib, Gtk
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("Pango", "1.0")
 
-from .. import paths
-from ..widgets import BasePage, remove_all_children, show_toast
+from gi.repository import GdkPixbuf, GLib, Gtk, Pango  # noqa: E402
+
+from .. import paths  # noqa: E402
+from ..widgets import BasePage, remove_all_children, show_toast  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -67,8 +72,7 @@ def _detect_current_color() -> str:
         return ""
     folder_svg = ICON_THEME_DIR / "folder.svg"
     if folder_svg.is_symlink():
-        target = os.readlink(str(folder_svg))
-        name = Path(target).stem
+        name = Path(os.readlink(str(folder_svg))).stem
         return name.replace("folder-", "")
     for _display_name, papirus_color in _COLOR_PRESETS:
         candidate = ICON_THEME_DIR / f"folder-{papirus_color}-pictures.svg"
@@ -78,7 +82,6 @@ def _detect_current_color() -> str:
 
 
 def _run_papirus_folders(*args: str, script: bool = False) -> bool:
-    """Run papirus-folders with error handling. Returns True on success."""
     try:
         if script and PAPIRUS_FOLDERS_SH.is_file():
             subprocess.Popen(
@@ -99,7 +102,6 @@ def _run_papirus_folders(*args: str, script: bool = False) -> bool:
 
 
 def _update_icon_cache():
-    """Refresh icon cache in background (non-blocking)."""
     def _do_update():
         for theme_dir in ICON_CACHE_THEME_DIRS:
             if theme_dir.exists():
@@ -112,7 +114,19 @@ def _update_icon_cache():
                 except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
                     log.warning("icon cache update failed: %s", exc)
         return False
+
     GLib.idle_add(_do_update)
+
+
+def _load_svg(path: Path, size: int):
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+            str(path), size, size, True
+        )
+        img = Gtk.Image.new_from_pixbuf(pb)
+        return img
+    except Exception:
+        return None
 
 
 class IconsPage(BasePage):
@@ -120,96 +134,77 @@ class IconsPage(BasePage):
         super().__init__(title="Icons", **kwargs)
         self._applying = False
 
-        # current icons preview
-        preview_title = Gtk.Label(label="Current Folder Icons")
-        preview_title.add_css_class("heading")
-        preview_title.set_xalign(0)
-        self._box.append(preview_title)
-
-        self._preview_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        preview_sec = self.section("Current Folder Icons")
+        self._preview_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self._preview_box.set_halign(Gtk.Align.START)
-        self._box.append(self._preview_box)
+        preview_sec.pack_start(self._preview_box, False, False, 0)
+        self._preview_color_label = Gtk.Label(label="", xalign=0)
+        self._preview_color_label.get_style_context().add_class("dim-label")
+        preview_sec.pack_start(self._preview_color_label, False, False, 0)
 
-        self._preview_color_label = Gtk.Label(label="")
-        self._preview_color_label.set_xalign(0)
-        self._box.append(self._preview_color_label)
-
-        sep0 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        self._box.append(sep0)
-
-        # pywal auto mode
-        auto_title = Gtk.Label(label="Pywal Auto-Color")
-        auto_title.add_css_class("heading")
-        auto_title.set_xalign(0)
-        self._box.append(auto_title)
-
+        auto_sec = self.section("Pywal Auto-Color")
         auto_desc = Gtk.Label(
             label="Automatically match papirus folder color to pywal color4. "
-            "Uses Euclidean distance to find the closest preset."
+            "Uses Euclidean distance to find the closest preset.",
+            xalign=0,
+            wrap=True,
         )
-        auto_desc.set_xalign(0)
-        auto_desc.set_wrap(True)
-        self._box.append(auto_desc)
-
-        apply_auto_btn = Gtk.Button(label="Apply Pywal Color Match")
-        apply_auto_btn.add_css_class("suggested-action")
+        auto_desc.get_style_context().add_class("dim-label")
+        auto_sec.pack_start(auto_desc, False, False, 0)
+        apply_auto_btn = self.primary_button("Apply Pywal Color Match")
         apply_auto_btn.connect("clicked", self._apply_auto)
-        self._box.append(apply_auto_btn)
+        auto_sec.pack_start(apply_auto_btn, False, False, 0)
 
-        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        self._box.append(sep)
-
-        # manual color picker
-        manual_title = Gtk.Label(label="Manual Folder Color")
-        manual_title.add_css_class("heading")
-        manual_title.set_xalign(0)
-        self._box.append(manual_title)
-
+        manual_sec = self.section("Manual Folder Color")
         self._preset_buttons: dict[str, Gtk.Button] = {}
-        grid = Gtk.Grid()
-        grid.set_column_spacing(8)
-        grid.set_row_spacing(8)
-
+        grid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        current_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         for i, (display_name, papirus_color) in enumerate(_COLOR_PRESETS):
+            if i % 7 == 0 and i > 0:
+                grid.pack_start(current_row, False, False, 0)
+                current_row = Gtk.Box(
+                    orientation=Gtk.Orientation.HORIZONTAL, spacing=8
+                )
             col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
             col.set_halign(Gtk.Align.CENTER)
-
             btn = Gtk.Button()
-            btn.add_css_class("flat")
-            btn.set_size_request(48, 48)
-
+            btn.get_style_context().add_class("flat")
+            btn.set_size_request(40, 40)
             icon_file = ICON_THEME_DIR / f"folder-{papirus_color}-pictures.svg"
-            if icon_file.exists():
-                img = Gtk.Image.new_from_file(str(icon_file))
-                img.set_pixel_size(48)
-                btn.set_child(img)
+            img = _load_svg(icon_file, 36) if icon_file.exists() else None
+            if img is not None:
+                btn.add(img)
             else:
-                btn.set_child(Gtk.Label(label=display_name[0].upper()))
-
-            btn.connect("clicked", lambda b, c=papirus_color: self._apply_preset(c))
+                btn.add(Gtk.Label(label=display_name[0].upper()))
+            btn.connect(
+                "clicked", lambda b, c=papirus_color: self._apply_preset(c)
+            )
             self._preset_buttons[display_name] = btn
-            col.append(btn)
+            col.pack_start(btn, False, False, 0)
+            lbl = Gtk.Label(label=display_name)
+            lbl.set_markup(f"<small>{display_name}</small>")
+            col.pack_start(lbl, False, False, 0)
+            current_row.pack_start(col, False, False, 0)
+        grid.pack_start(current_row, False, False, 0)
+        manual_sec.pack_start(grid, False, False, 0)
 
-            lbl = Gtk.Label()
-            lbl.set_markup(f'<small>{display_name}</small>')
-            col.append(lbl)
-
-            grid.attach(col, i % 7, i // 7, 1, 1)
-
-        self._box.append(grid)
-
-        # custom hex input
+        # custom hex
         custom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self._custom_entry = Adw.EntryRow(title="Custom hex color")
+        custom_lbl = Gtk.Label(label="Custom hex color", xalign=0)
+        custom_box.pack_start(custom_lbl, False, False, 0)
+        self._custom_entry = Gtk.Entry()
         self._custom_entry.set_text("#2196F3")
-        custom_box.append(self._custom_entry)
-
-        apply_custom_btn = Gtk.Button(label="Apply")
+        self._custom_entry.set_hexpand(True)
+        custom_box.pack_start(self._custom_entry, True, True, 0)
+        apply_custom_btn = self.primary_button("Apply")
         apply_custom_btn.connect("clicked", self._apply_custom)
-        custom_box.append(apply_custom_btn)
-        self._box.append(custom_box)
+        custom_box.pack_start(apply_custom_btn, False, False, 0)
+        manual_sec.pack_start(custom_box, False, False, 0)
 
-        self.connect("map", lambda w: self._load_current())
+        self._load_current()
+
+    def on_shown(self):
+        self._load_current()
 
     def _load_current(self):
         color = _detect_current_color()
@@ -218,12 +213,10 @@ class IconsPage(BasePage):
 
     def _refresh_preview(self, color: str):
         remove_all_children(self._preview_box)
-
         if not ICON_THEME_DIR.exists():
             lbl = Gtk.Label(label="(icon theme not found)")
-            self._preview_box.append(lbl)
+            self._preview_box.pack_start(lbl, False, False, 0)
             return
-
         for icon_template, label_text in _PREVIEW_ICONS:
             icon_name = icon_template.replace("{color}", color)
             icon_path = ICON_THEME_DIR / icon_name
@@ -232,25 +225,17 @@ class IconsPage(BasePage):
                 icon_path = ICON_THEME_DIR / fallback_name
             if not icon_path.exists():
                 continue
-
-            icon_box = Gtk.Box()
-            icon_box.set_size_request(48, 48)
-            icon_box.set_halign(Gtk.Align.CENTER)
-            icon_box.set_valign(Gtk.Align.CENTER)
-
-            img = Gtk.Image.new_from_file(str(icon_path))
-            img.set_pixel_size(48)
-            icon_box.append(img)
-
             item = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
             item.set_halign(Gtk.Align.CENTER)
-            item.append(icon_box)
-
+            img = _load_svg(icon_path, 40)
+            if img is None:
+                continue
+            item.pack_start(img, False, False, 0)
             lbl = Gtk.Label(label=label_text)
-            lbl.set_markup(f'<small>{label_text}</small>')
-            item.append(lbl)
-
-            self._preview_box.append(item)
+            lbl.set_markup(f"<small>{label_text}</small>")
+            item.pack_start(lbl, False, False, 0)
+            self._preview_box.pack_start(item, False, False, 0)
+        self._preview_box.show_all()
 
     def _apply_auto(self, btn):
         script = str(paths.CHANGE_ICONS_SH)
@@ -258,7 +243,12 @@ class IconsPage(BasePage):
             try:
                 subprocess.Popen(["bash", script], start_new_session=True)
                 GLib.timeout_add(POST_ACTION_DELAY_MS, self._post_color_change)
-                show_toast(self, "Icon Theme - pywal color applied\nPress F5 in File Manager to refresh", timeout=5)
+                show_toast(
+                    self,
+                    "Icon Theme - pywal color applied\n"
+                    "Press F5 in File Manager to refresh",
+                    timeout=5,
+                )
             except FileNotFoundError:
                 show_toast(self, "Failed to run icon script", timeout=4)
 
@@ -266,7 +256,6 @@ class IconsPage(BasePage):
         if self._applying:
             return
         self._applying = True
-
         ok = _run_papirus_folders(
             "-C", color_name, "-t", "Papirus-Dark",
             script=PAPIRUS_FOLDERS_SH.is_file(),
@@ -276,7 +265,6 @@ class IconsPage(BasePage):
             show_toast(self, f"Icon Theme - {color_name} applied", timeout=5)
         else:
             show_toast(self, "papirus-folders not found", timeout=4)
-
         self._applying = False
 
     def _post_color_change(self):
@@ -290,8 +278,7 @@ class IconsPage(BasePage):
             return
         folder_svg = ICON_THEME_DIR / "folder.svg"
         if folder_svg.is_symlink():
-            target = os.readlink(str(folder_svg))
-            color = Path(target).stem.replace("folder-", "")
+            color = Path(os.readlink(str(folder_svg))).stem.replace("folder-", "")
         else:
             return
         if not color:
@@ -319,7 +306,11 @@ class IconsPage(BasePage):
                     user_target_path = places / user_target
                     if user_target_path.exists():
                         if user_generic.exists() or user_generic.is_symlink():
-                            current = os.readlink(str(user_generic)) if user_generic.is_symlink() else None
+                            current = (
+                                os.readlink(str(user_generic))
+                                if user_generic.is_symlink()
+                                else None
+                            )
                             if current != user_target:
                                 user_generic.unlink()
                                 os.symlink(user_target, str(user_generic))

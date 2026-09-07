@@ -1,9 +1,11 @@
 # theme-gui
 
-A GTK4/Adwaita theme manager for the Hyprland desktop, written in Python. It
-gives you a single window to pick a wallpaper, regenerate pywal colors, and
-apply matching themes across rofi, the hyprtk-bar, swaylock, icons, and
-SDDM/GRUB — all tinted with your active pywal palette.
+A GTK3 theme manager for the Hyprland desktop, written in Python. It gives you
+a single window to pick a wallpaper, regenerate pywal colors, and apply
+matching themes across rofi, the hyprtk-bar, swaylock, icons, and SDDM/GRUB —
+all themed with the same palette resolution as hyprtk-bar (pywal / imported /
+manual) and rendered as a frameless glass panel that matches the bar's system
+monitor look and feel.
 
 ## Features
 
@@ -18,8 +20,9 @@ SDDM/GRUB — all tinted with your active pywal palette.
 - **Swaylock** — apply themed lock-screen config
 - **Icons** — switch icon themes
 - **SDDM & GRUB** — themed login / bootloader settings
-- **Live pywal theming** — the whole UI is re-tinted from
-  `~/.cache/wal/colors.json` with contrast-aware accents (color5/color6)
+- **Monitor-style glass UI** — frameless, translucent, rounded window with a
+  Nerd-Font glyph sidebar (active row = accent), matching the hyprtk-bar system
+  monitor / settings-dialogue look. Live re-theme from the bar's theme source.
 
 ## Install
 
@@ -56,19 +59,22 @@ hyprtk-themer      # alias desktop launcher
 
 ## Requirements
 
-- python3, python-gobject (PyGObject), pycairo
-- gtk4, libadwaita
+- python3, python-gobject (PyGObject, GTK3 bindings), pycairo
+- gtk3
 - pywal16 (and the target tools: rofi, hyprtk-bar, swaylock, sddm, matuwall)
 
 ## Structure
 
 ```
 src/theme_gui/
-├── app.py        # GTK4/Adwaita window, page registry, pywal CSS
+├── app.py        # frameless glass window, glyph sidebar + page stack
+├── theme.py      # palette resolution + GTK3 chrome CSS (mc-* / settings-*)
+├── bar_theme.py  # hyprtk-bar palette resolver (pywal / imported / manual)
 ├── colors.py     # wal color parsing + contrast helpers
 ├── config.py     # config persistence (atomic writes)
 ├── cache.py      # wallpaper thumbnail index
 ├── paths.py      # app paths
+├── widgets/      # Glyph, BasePage, sections, color swatches + grid
 └── modules/      # one page per target (wallpaper, pywal, rofi, bar,
                   # matuwall, swaylock, icons, sddm)
 ```

@@ -1,15 +1,23 @@
-"""Swaylock theme editor with live preview."""
+"""Swaylock theme editor with live preview (GTK3)."""
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-from gi.repository import Adw, Gtk
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Pango", "1.0")
 
-from .. import paths
-from ..colors import hex_to_rgb_float, read_swaylock_config, write_swaylock_config
-from ..widgets import BasePage, show_toast
-from ..widgets.color_button import ColorButton
+from gi.repository import Gtk, Pango  # noqa: E402
+
+from .. import paths  # noqa: E402
+from ..colors import (
+    hex_to_rgb_float,
+    read_swaylock_config,
+    write_swaylock_config,
+)  # noqa: E402
+from ..widgets import BasePage, show_toast  # noqa: E402
+from ..widgets.color_button import ColorButton  # noqa: E402
 
 
 class SwaylockPreview(Gtk.DrawingArea):
@@ -29,7 +37,7 @@ class SwaylockPreview(Gtk.DrawingArea):
         }
         self._indicator_radius = 100
         self._indicator_thickness = 18
-        self.set_draw_func(self._draw)
+        self.connect("draw", self._draw)
 
     def update_colors(self, colors: dict[str, str]):
         self._colors.update(colors)
@@ -40,97 +48,79 @@ class SwaylockPreview(Gtk.DrawingArea):
         self._indicator_thickness = thickness
         self.queue_draw()
 
-    def _draw(self, area, cr, width, height):
+    def _draw(self, _widget, cr):
         import cairo
 
+        width = self.get_allocated_width()
+        height = self.get_allocated_height()
         cx, cy = width / 2, height / 2
         radius = min(self._indicator_radius, min(width, height) / 2 - 8)
 
-        # outer ring
         r, g, b = hex_to_rgb_float(self._colors.get("ring-color", "#ffffff"))
         cr.set_source_rgb(r, g, b)
         cr.arc(cx, cy, radius, 0, 2 * 3.14159)
         cr.set_line_width(self._indicator_thickness * 0.9)
         cr.stroke()
 
-        # inner circle
         r, g, b = hex_to_rgb_float(self._colors.get("inside-color", "#000000"))
         cr.set_source_rgb(r, g, b)
         cr.arc(cx, cy, radius * 0.72, 0, 2 * 3.14159)
         cr.fill()
 
-        # key highlight dot (at 12 o'clock)
         r, g, b = hex_to_rgb_float(self._colors.get("key-hl-color", "#22d3ee"))
         cr.set_source_rgb(r, g, b)
         dot_r = radius * 0.08
         cr.arc(cx, cy - radius * 0.91, dot_r, 0, 2 * 3.14159)
         cr.fill()
 
-        # backspace highlight dot (at 6 o'clock)
         r, g, b = hex_to_rgb_float(self._colors.get("bs-hl-color", "#ff0000"))
         cr.set_source_rgb(r, g, b)
         cr.arc(cx, cy + radius * 0.91, dot_r, 0, 2 * 3.14159)
         cr.fill()
 
-        # centered text
         r, g, b = hex_to_rgb_float(self._colors.get("text-color", "#ffffff"))
         cr.set_source_rgb(r, g, b)
-        cr.select_font_face("sans-serif", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        cr.select_font_face(
+            "sans-serif", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD
+        )
         cr.set_font_size(radius * 0.35)
         ext = cr.text_extents("Password")
         cr.move_to(cx - ext.width / 2, cy + ext.height / 3)
         cr.show_text("Password")
+        return False
 
 
 class SwaylockPage(BasePage):
     def __init__(self, **kwargs):
         super().__init__(title="Swaylock", **kwargs)
 
-        # pywal mode section
-        wal_frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        wal_title = Gtk.Label(label="Pywal Mode")
-        wal_title.add_css_class("heading")
-        wal_title.set_xalign(0)
-        wal_frame.append(wal_title)
-
+        # pywal mode
+        wal_sec = self.section("Pywal Mode")
         wal_desc = Gtk.Label(
-            label="Copy pywal-generated colors to swaylock config. "
-            "This syncs the lock screen with your current wallpaper palette."
+            label="Copy pywal-generated colors to swaylock config. This syncs "
+            "the lock screen with your current wallpaper palette.",
+            xalign=0,
+            wrap=True,
         )
-        wal_desc.set_xalign(0)
-        wal_desc.set_wrap(True)
-        wal_frame.append(wal_desc)
-
-        apply_wal_btn = Gtk.Button(label="Apply Pywal Colors")
-        apply_wal_btn.add_css_class("suggested-action")
+        wal_desc.get_style_context().add_class("dim-label")
+        wal_sec.pack_start(wal_desc, False, False, 0)
+        apply_wal_btn = self.primary_button("Apply Pywal Colors")
         apply_wal_btn.connect("clicked", self._apply_pywal)
-        wal_frame.append(apply_wal_btn)
-        self._box.append(wal_frame)
+        wal_sec.pack_start(apply_wal_btn, False, False, 0)
 
-        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        self._box.append(sep)
-
-        # manual mode section
-        manual_title = Gtk.Label(label="Manual Color Editor")
-        manual_title.add_css_class("heading")
-        manual_title.set_xalign(0)
-        self._box.append(manual_title)
-
-        # refresh from pywal button
+        # manual color editor
+        manual_sec = self.section("Manual Color Editor")
         refresh_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        load_pywal_btn = Gtk.Button(label="Load Current Pywal Colors")
-        load_pywal_btn.add_css_class("flat")
+        load_pywal_btn = self.flat_button("Load Current Pywal Colors")
         load_pywal_btn.connect("clicked", self._load_pywal_colors)
-        refresh_box.append(load_pywal_btn)
-        self._box.append(refresh_box)
+        refresh_box.pack_start(load_pywal_btn, False, False, 0)
+        manual_sec.pack_start(refresh_box, False, False, 0)
 
         self._color_buttons: dict[str, ColorButton] = {}
-
         manual_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-
         self._preview = SwaylockPreview()
         self._preview.set_valign(Gtk.Align.START)
-        manual_row.append(self._preview)
+        manual_row.pack_start(self._preview, False, False, 0)
 
         color_fields = [
             ("ring-color", "Ring (idle)"),
@@ -146,86 +136,84 @@ class SwaylockPage(BasePage):
             ("text-color", "Text"),
             ("bs-hl-color", "Backspace highlight"),
         ]
-
         mid = len(color_fields) // 2
         for group in (color_fields[:mid], color_fields[mid:]):
-            grid = Gtk.Grid()
-            grid.set_column_spacing(12)
-            grid.set_row_spacing(6)
+            grid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             grid.set_valign(Gtk.Align.START)
-            for i, (key, label) in enumerate(group):
-                lbl = Gtk.Label(label=label)
-                lbl.set_xalign(0)
-                lbl.set_size_request(130, -1)
-                grid.attach(lbl, 0, i, 1, 1)
+            for key, label_text in group:
+                r = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                lbl = Gtk.Label(label=label_text, xalign=0)
+                lbl.set_size_request(140, -1)
+                r.pack_start(lbl, False, False, 0)
                 cb = ColorButton()
-                cb.connect_color_changed(lambda btn, hex_val, k=key: self._on_color_change(k, hex_val))
+                cb.connect_color_changed(
+                    lambda btn, hex_val, k=key: self._on_color_change(k, hex_val)
+                )
                 self._color_buttons[key] = cb
-                grid.attach(cb, 1, i, 1, 1)
-            manual_row.append(grid)
+                r.pack_start(cb, False, False, 0)
+                grid.pack_start(r, False, False, 0)
+            manual_row.pack_start(grid, False, False, 0)
+        manual_sec.pack_start(manual_row, False, False, 0)
 
-        self._box.append(manual_row)
-
-        save_btn = Gtk.Button(label="Save Manual Config")
-        save_btn.add_css_class("suggested-action")
+        save_btn = self.primary_button("Save Manual Config")
         save_btn.connect("clicked", self._save_manual)
-        self._box.append(save_btn)
+        manual_sec.pack_start(save_btn, False, False, 0)
 
-        # settings section
-        sep2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        self._box.append(sep2)
-
-        settings_title = Gtk.Label(label="Indicator Settings")
-        settings_title.add_css_class("heading")
-        settings_title.set_xalign(0)
-        self._box.append(settings_title)
-
-        self._indicator_radius = Adw.EntryRow(title="Indicator Radius")
-        self._indicator_thickness = Adw.EntryRow(title="Indicator Thickness")
-        self._fade_in = Adw.EntryRow(title="Fade-in (seconds)")
-        self._effect = Adw.EntryRow(title="Effect (e.g. effect-pixelate=5)")
-        self._box.append(self._indicator_radius)
-        self._box.append(self._indicator_thickness)
-        self._box.append(self._fade_in)
-        self._box.append(self._effect)
-
-        save_settings_btn = Gtk.Button(label="Save Settings")
-        save_settings_btn.add_css_class("suggested-action")
+        # indicator settings
+        settings_sec = self.section("Indicator Settings")
+        self._indicator_radius = self._entry_row(settings_sec, "Indicator Radius")
+        self._indicator_thickness = self._entry_row(
+            settings_sec, "Indicator Thickness"
+        )
+        self._fade_in = self._entry_row(settings_sec, "Fade-in (seconds)")
+        self._effect = self._entry_row(
+            settings_sec, "Effect (e.g. effect-pixelate=5)"
+        )
+        save_settings_btn = self.primary_button("Save Settings")
         save_settings_btn.connect("clicked", self._save_settings)
-        self._box.append(save_settings_btn)
+        settings_sec.pack_start(save_settings_btn, False, False, 0)
 
         self._load()
-        self.connect("map", lambda w: self._load())
+
+    def on_shown(self):
+        self._load()
+
+    @staticmethod
+    def _entry_row(parent, title: str) -> Gtk.Entry:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        lbl = Gtk.Label(label=title, xalign=0)
+        lbl.set_size_request(160, -1)
+        row.pack_start(lbl, False, False, 0)
+        entry = Gtk.Entry()
+        entry.set_hexpand(True)
+        row.pack_start(entry, True, True, 0)
+        parent.pack_start(row, False, False, 0)
+        return entry
 
     def _load(self):
-        # Read from saved config first
         config = read_swaylock_config()
-
-        # Also read current pywal colors from main file
         wal_colors_file = paths.WAL_CACHE / "colors"
         if wal_colors_file.exists():
             try:
-                hex_colors = []
-                for line in wal_colors_file.read_text().splitlines():
-                    line = line.strip()
-                    if line.startswith("#") and len(line) == 7:
-                        hex_colors.append(line[1:].upper())
-                
+                hex_colors = [
+                    line[1:].upper()
+                    for line in wal_colors_file.read_text().splitlines()
+                    if line.strip().startswith("#") and len(line.strip()) == 7
+                ]
                 if len(hex_colors) >= 8:
-                    # Map pywal colors to swaylock keys
                     wal_map = {
-                        "ring-color": hex_colors[6],           # cyan
-                        "ring-clear-color": hex_colors[4],     # blue
-                        "ring-wrong-color": hex_colors[1],     # red
-                        "ring-ver-color": hex_colors[5],       # magenta
-                        "ring-caps-lock-color": hex_colors[5], # magenta
-                        "inside-color": hex_colors[0],         # black
-                        "inside-clear-color": hex_colors[4],   # blue
-                        "inside-wrong-color": hex_colors[1],   # red
-                        "inside-ver-color": hex_colors[5],     # magenta
-                        "key-hl-color": hex_colors[6],         # cyan
-                        "text-color": hex_colors[7],           # white
-                        "bs-hl-color": hex_colors[1],          # red
+                        "ring-color": hex_colors[6],
+                        "ring-clear-color": hex_colors[4],
+                        "ring-wrong-color": hex_colors[1],
+                        "ring-ver-color": hex_colors[5],
+                        "ring-caps-lock-color": hex_colors[5],
+                        "inside-color": hex_colors[0],
+                        "inside-clear-color": hex_colors[4],
+                        "inside-wrong-color": hex_colors[1],
+                        "inside-ver-color": hex_colors[5],
+                        "key-hl-color": hex_colors[6],
+                        "text-color": hex_colors[7],
+                        "bs-hl-color": hex_colors[1],
                     }
                     config.update(wal_map)
             except OSError:
@@ -238,7 +226,6 @@ class SwaylockPage(BasePage):
                 val = f"#{val}"
             cb.set_color(val)
             preview_colors[key] = val
-
         self._preview.update_colors(preview_colors)
 
         self._indicator_radius.set_text(config.get("indicator-radius", "200"))
@@ -264,46 +251,36 @@ class SwaylockPage(BasePage):
         self._preview.update_colors({key: hex_val})
 
     def _load_pywal_colors(self, btn):
-        """Read current pywal colors and update the manual editor."""
-        # Read main pywal colors file
         wal_colors_file = paths.WAL_CACHE / "colors"
         if not wal_colors_file.exists():
             show_toast(self, "No pywal colors found", timeout=4)
             return
-        
-        # Parse hex colors (without # prefix for swaylock)
-        hex_colors = []
         try:
-            for line in wal_colors_file.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("#") and len(line) == 7:
-                    hex_colors.append(line[1:].upper())
+            hex_colors = [
+                line[1:].upper()
+                for line in wal_colors_file.read_text().splitlines()
+                if line.strip().startswith("#") and len(line.strip()) == 7
+            ]
         except OSError:
             show_toast(self, "Failed to read pywal colors", timeout=4)
             return
-        
         if len(hex_colors) < 8:
             show_toast(self, "Pywal colors file incomplete", timeout=4)
             return
-        
-        # Map pywal colors to swaylock keys
-        # color0=black, color1=red, color2=green, color3=yellow
-        # color4=blue, color5=magenta, color6=cyan, color7=white
         wal_map = {
-            "ring-color": hex_colors[6],           # cyan
-            "ring-clear-color": hex_colors[4],     # blue
-            "ring-wrong-color": hex_colors[1],     # red
-            "ring-ver-color": hex_colors[5],       # magenta
-            "ring-caps-lock-color": hex_colors[5], # magenta
-            "inside-color": hex_colors[0],         # black
-            "inside-clear-color": hex_colors[4],   # blue
-            "inside-wrong-color": hex_colors[1],   # red
-            "inside-ver-color": hex_colors[5],     # magenta
-            "key-hl-color": hex_colors[6],         # cyan
-            "text-color": hex_colors[7],           # white
-            "bs-hl-color": hex_colors[1],          # red
+            "ring-color": hex_colors[6],
+            "ring-clear-color": hex_colors[4],
+            "ring-wrong-color": hex_colors[1],
+            "ring-ver-color": hex_colors[5],
+            "ring-caps-lock-color": hex_colors[5],
+            "inside-color": hex_colors[0],
+            "inside-clear-color": hex_colors[4],
+            "inside-wrong-color": hex_colors[1],
+            "inside-ver-color": hex_colors[5],
+            "key-hl-color": hex_colors[6],
+            "text-color": hex_colors[7],
+            "bs-hl-color": hex_colors[1],
         }
-        
         preview_colors = {}
         for key, cb in self._color_buttons.items():
             val = wal_map.get(key, "#ffffff")
@@ -314,29 +291,23 @@ class SwaylockPage(BasePage):
         show_toast(self, "Loaded pywal colors")
 
     def _apply_pywal(self, btn):
-        """Update swaylock config colors with current pywal colors."""
-        # Read main pywal colors
         wal_colors_file = paths.WAL_CACHE / "colors"
         if not wal_colors_file.exists():
             show_toast(self, "No pywal colors found", timeout=4)
             return
-        
-        hex_colors = []
         try:
-            for line in wal_colors_file.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("#") and len(line) == 7:
-                    hex_colors.append(line[1:].upper())
+            hex_colors = [
+                line[1:].upper()
+                for line in wal_colors_file.read_text().splitlines()
+                if line.strip().startswith("#") and len(line.strip()) == 7
+            ]
         except OSError:
             show_toast(self, "Failed to read pywal colors", timeout=4)
             return
-        
         if len(hex_colors) < 8:
             show_toast(self, "Pywal colors file incomplete", timeout=4)
             return
-        
-        # Map pywal color indices to swaylock color keys
-        # Each tuple: (swaylock_key, pywal_index, keep_alpha)
+
         color_mapping = [
             ("ring-color", 6, False),
             ("ring-clear-color", 4, False),
@@ -363,24 +334,16 @@ class SwaylockPage(BasePage):
             ("caps-lock-bs-hl-color", 5, True),
             ("text-caps-lock-color", 5, False),
         ]
-        
-        # Build replacement dict
         replacements = {}
         for key, idx, keep_alpha in color_mapping:
             new_color = hex_colors[idx]
-            if keep_alpha:
-                # Use 44 alpha (27% opacity) for transparent elements
-                replacements[key] = f"{new_color}44"
-            else:
-                replacements[key] = new_color
-        
-        # Read original config template
+            replacements[key] = f"{new_color}44" if keep_alpha else new_color
+
         template = paths.WAL_CACHE / "colors-swaylock.conf"
         if not template.exists():
             show_toast(self, "No swaylock template found", timeout=4)
             return
-        
-        # Update colors in-place, preserving structure and alpha
+
         lines = template.read_text().splitlines()
         new_lines = []
         for line in lines:
@@ -391,12 +354,10 @@ class SwaylockPage(BasePage):
                     new_lines.append(f"{key}={replacements[key]}")
                     continue
             new_lines.append(line)
-        
-        # Save updated config
+
         paths.SWAYLOCK_CONFIG.parent.mkdir(parents=True, exist_ok=True)
         paths.SWAYLOCK_CONFIG.write_text("\n".join(new_lines) + "\n")
-        
-        # Update UI
+
         self._load()
         show_toast(self, "Swaylock colors applied and saved")
 
@@ -412,15 +373,12 @@ class SwaylockPage(BasePage):
         config["indicator-radius"] = self._indicator_radius.get_text()
         config["indicator-thickness"] = self._indicator_thickness.get_text()
         config["fade-in"] = self._fade_in.get_text()
-
         for key in list(config.keys()):
             if key.startswith("effect-"):
                 del config[key]
-
         effect_text = self._effect.get_text().strip()
         if "=" in effect_text:
             k, _, v = effect_text.partition("=")
             config[k] = v
-
         write_swaylock_config(config)
         show_toast(self, "Swaylock settings saved")
