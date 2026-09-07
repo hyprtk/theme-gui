@@ -1,18 +1,15 @@
-"""SDDM & GRUB wallpaper updater module (GTK3)."""
+"""SDDM & GRUB wallpaper updater module."""
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
-import gi
-gi.require_version("Gtk", "3.0")
-gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Adw, Gtk
 
-from gi.repository import GdkPixbuf, Gtk  # noqa: E402
-
-from .. import paths  # noqa: E402
-from ..widgets import BasePage, show_toast  # noqa: E402
+from .. import paths
+from ..widgets import BasePage, show_toast
 
 log = logging.getLogger(__name__)
 
@@ -23,42 +20,43 @@ class SddmPage(BasePage):
     def __init__(self, **kwargs):
         super().__init__(title="SDDM & GRUB", **kwargs)
 
+        # info label
         info = Gtk.Label(
-            label="Update the login screen (SDDM) and bootloader (GRUB) "
-            "with your current wallpaper.",
-            xalign=0,
-            wrap=True,
+            label="Update the login screen (SDDM) and bootloader (GRUB)\n"
+                  "with your current wallpaper.",
         )
-        info.get_style_context().add_class("dim-label")
-        self.body.pack_start(info, False, False, 0)
+        info.set_xalign(0)
+        info.set_wrap(True)
+        info.add_css_class("dim-label")
+        self._box.append(info)
 
+        # current wallpaper preview
         self._wallpaper_path = Path.home() / ".cache" / "current-wallpaper.png"
         if self._wallpaper_path.exists():
-            try:
-                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                    str(self._wallpaper_path), -1, 200, True
-                )
-                img = Gtk.Image.new_from_pixbuf(pb)
-                img.set_halign(Gtk.Align.FILL)
-                img.get_style_context().add_class("preview-frame")
-                self.body.pack_start(img, False, False, 0)
-            except Exception:
-                pass
+            img = Gtk.Picture()
+            img.set_filename(str(self._wallpaper_path))
+            img.set_content_fit(Gtk.ContentFit.CONTAIN)
+            img.set_size_request(-1, 200)
+            img.add_css_class("card")
+            self._box.append(img)
 
-        update_btn = self.primary_button("Update SDDM & GRUB Wallpaper")
-        update_btn.set_margin_top(8)
+        # update button
+        update_btn = Gtk.Button(label="Update SDDM & GRUB Wallpaper")
+        update_btn.add_css_class("suggested-action")
+        update_btn.set_margin_top(12)
         update_btn.connect("clicked", self._on_update)
-        self.body.pack_start(update_btn, False, False, 0)
-        self._update_btn = update_btn
+        self._box.append(update_btn)
 
-        self._status = Gtk.Label(label="", xalign=0)
-        self._status.get_style_context().add_class("dim-label")
-        self.body.pack_start(self._status, False, False, 0)
+        # status
+        self._status = Gtk.Label(label="")
+        self._status.set_xalign(0)
+        self._box.append(self._status)
 
     def _on_update(self, btn):
         if not UPDATE_SH.is_file():
             show_toast(self, "update.sh not found", timeout=4)
             return
+
         if not self._wallpaper_path.exists():
             show_toast(self, "No current wallpaper found", timeout=4)
             return

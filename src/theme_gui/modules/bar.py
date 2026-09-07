@@ -1,4 +1,4 @@
-"""hyprtk-bar theme manager (GTK3)."""
+"""hyprtk-bar theme manager with error handling and loading feedback."""
 from __future__ import annotations
 
 import json
@@ -6,14 +6,10 @@ import logging
 import subprocess
 from pathlib import Path
 
-import gi
-gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
+from gi.repository import Adw, GLib, Gtk
 
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
-
-from .. import paths  # noqa: E402
-from ..widgets import BasePage, remove_all_children, show_toast  # noqa: E402
+from .. import paths
+from ..widgets import BasePage, remove_all_children, show_toast
 
 log = logging.getLogger(__name__)
 
@@ -23,22 +19,25 @@ class BarPage(BasePage):
         super().__init__(title="Bar Themes", **kwargs)
         self._active_theme = ""
 
-        self._active_label = Gtk.Label(label="Active theme: ...", xalign=0)
-        self._active_label.get_style_context().add_class("heading")
-        self.body.pack_start(self._active_label, False, False, 0)
+        # active theme indicator
+        self._active_label = Gtk.Label(label="Active theme: ...")
+        self._active_label.set_xalign(0)
+        self._active_label.add_css_class("heading")
+        self._box.append(self._active_label)
 
-        list_sec = self.section("Imported Themes")
-        self._theme_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        list_sec.pack_start(self._theme_list, False, False, 0)
+        # theme list
+        self._theme_list = Gtk.ListBox()
+        self._theme_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self._box.append(self._theme_list)
 
-        launch_btn = self.flat_button("Restart Bar")
+        # manual refresh button
+        launch_btn = Gtk.Button(label="Restart Bar")
+        launch_btn.add_css_class("flat")
         launch_btn.connect("clicked", self._restart_bar)
-        self.body.pack_start(launch_btn, False, False, 0)
+        self._box.append(launch_btn)
 
         self._refresh()
-
-    def on_shown(self):
-        self._refresh()
+        self.connect("map", lambda w: self._refresh())
 
     def _refresh(self):
         self._load_active()
@@ -51,6 +50,7 @@ class BarPage(BasePage):
         except (OSError, json.JSONDecodeError):
             self._active_label.set_text("Active theme: (none)")
             return
+
         theme = cfg.get("theme") or {}
         source = theme.get("source", "pywal")
         name = theme.get("theme_name") or ""
@@ -63,47 +63,45 @@ class BarPage(BasePage):
 
     def _load_themes(self):
         remove_all_children(self._theme_list)
+
         themes_dir = paths.BAR_THEMES
         if not themes_dir.exists():
             return
+
         for d in sorted(themes_dir.iterdir()):
-            if not d.is_dir() or not (d / "style.css").exists():
+            if not d.is_dir():
                 continue
+            if not (d / "style.css").exists():
+                continue
+
             name = d.name
             display_name = name
             config_sh = d / "config.sh"
             if config_sh.exists():
                 for line in config_sh.read_text().splitlines():
                     if "theme_name" in line and "=" in line:
-                        display_name = (
-                            line.split("=", 1)[1].strip().strip("'\"")
-                        )
+                        display_name = line.split("=", 1)[1].strip().strip("'\"")
                         break
 
-            row = Gtk.Button()
-            row.get_style_context().add_class("flat")
-            row.get_style_context().add_class("tg-row")
-            row.set_halign(Gtk.Align.FILL)
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            lbl = Gtk.Label(label=display_name, xalign=0)
-            lbl.set_hexpand(True)
-            box.pack_start(lbl, True, True, 0)
+            row = Adw.ActionRow(title=display_name)
             if display_name != name and not (display_name.lower() == name):
-                sub = Gtk.Label(label=name, xalign=0)
-                sub.get_style_context().add_class("dim-label")
-                box.pack_start(sub, False, False, 0)
+                row.set_subtitle(name)
+            row.set_activatable(True)
+            row.add_css_class("sidebar-row")
+            row._theme_dir = d
+
             if name == self._active_theme:
                 badge = Gtk.Label(label="Active")
-                badge.get_style_context().add_class("badge")
-                box.pack_start(badge, False, False, 0)
-                row.get_style_context().add_class("active")
-            row.add(box)
-            row.connect("clicked", self._on_theme_click, d)
-            self._theme_list.pack_start(row, False, False, 0)
-        self._theme_list.show_all()
+                badge.add_css_class("success")
+                row.add_suffix(badge)
 
-    def _on_theme_click(self, _btn, theme_dir: Path):
+            row.connect("activated", self._on_theme_click)
+            self._theme_list.append(row)
+
+    def _on_theme_click(self, row):
+        theme_dir = row._theme_dir
         theme_name = theme_dir.name
+
         try:
             cfg = json.loads(paths.BAR_CONFIG.read_text())
         except (OSError, json.JSONDecodeError):
@@ -121,16 +119,25 @@ class BarPage(BasePage):
 
         self._restart_bar(None)
         self._refresh()
+        # Re-theme theme-gui's own UI to the newly selected bar theme.
         GLib.timeout_add(800, self._refresh_app_css)
         show_toast(self, f"Bar restarted with {theme_name}")
 
     def _refresh_app_css(self):
-        from ..theme import refresh_app_css
+        from ..app import refresh_app_css
 
         refresh_app_css()
         return False
 
     def _restart_bar(self, btn):
+        """Restart hyprtk-bar so the new theme is picked up.
+
+        pkill must match the bar's invocation (``python3 -m hyprtk_bar``) and
+        not the ``bash -c`` wrapper itself. The ``[h]yprtk_bar`` character
+        class trick makes the pattern not match this wrapper's own command line
+        (which contains the literal ``[h]yprtk_bar``), so pkill only kills the
+        bar.
+        """
         launcher = paths.BAR_LAUNCHER
         if not launcher.is_file():
             show_toast(self, "hyprtk-bar launcher not found", timeout=4)

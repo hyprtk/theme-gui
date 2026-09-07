@@ -1,4 +1,4 @@
-"""Rofi theme variant manager (GTK3)."""
+"""Rofi theme variant manager."""
 from __future__ import annotations
 
 import logging
@@ -6,14 +6,10 @@ import os
 import subprocess
 from pathlib import Path
 
-import gi
-gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
+from gi.repository import Adw, Gtk
 
-from gi.repository import Gtk, Pango  # noqa: E402
-
-from .. import paths  # noqa: E402
-from ..widgets import BasePage, remove_all_children, show_toast  # noqa: E402
+from .. import paths
+from ..widgets import BasePage, remove_all_children, show_toast
 
 log = logging.getLogger(__name__)
 
@@ -22,22 +18,25 @@ class RofiPage(BasePage):
     def __init__(self, **kwargs):
         super().__init__(title="Rofi Themes", **kwargs)
 
-        self._active_label = Gtk.Label(label="Active variant: ...", xalign=0)
-        self._active_label.get_style_context().add_class("heading")
-        self.body.pack_start(self._active_label, False, False, 0)
+        # active variant indicator
+        self._active_label = Gtk.Label(label="Active variant: ...")
+        self._active_label.set_xalign(0)
+        self._active_label.add_css_class("heading")
+        self._box.append(self._active_label)
 
-        list_sec = self.section("Variants")
-        self._variant_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        list_sec.pack_start(self._variant_list, False, False, 0)
+        # variant list
+        self._variant_list = Gtk.ListBox()
+        self._variant_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self._box.append(self._variant_list)
 
-        apply_btn = self.flat_button("Regenerate from Pywal")
+        # regenerate button
+        apply_btn = Gtk.Button(label="Regenerate from Pywal")
+        apply_btn.add_css_class("flat")
         apply_btn.connect("clicked", self._regenerate)
-        self.body.pack_start(apply_btn, False, False, 0)
+        self._box.append(apply_btn)
 
         self._refresh()
-
-    def on_shown(self):
-        self._refresh()
+        self.connect("map", lambda w: self._refresh())
 
     def _refresh(self):
         self._load_active()
@@ -46,43 +45,40 @@ class RofiPage(BasePage):
     def _load_active(self):
         link = paths.ROFI_VARIANT_LINK
         if link.is_symlink():
-            name = Path(os.readlink(str(link))).stem
+            target = os.readlink(str(link))
+            name = Path(target).stem
             self._active_label.set_text(f"Active variant: {name}")
         else:
             self._active_label.set_text("Active variant: (none)")
 
     def _load_variants(self):
         remove_all_children(self._variant_list)
+
         variants_dir = paths.ROFI_VARIANTS
         if not variants_dir.exists():
             return
-        link = paths.ROFI_VARIANT_LINK
-        active_target = (
-            os.readlink(str(link)) if link.is_symlink() else None
-        )
-        for f in sorted(variants_dir.glob("*.rasi")):
-            row = Gtk.Button()
-            row.get_style_context().add_class("flat")
-            row.get_style_context().add_class("tg-row")
-            row.set_halign(Gtk.Align.FILL)
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            lbl = Gtk.Label(label=f.stem, xalign=0)
-            lbl.set_hexpand(True)
-            box.pack_start(lbl, True, True, 0)
-            if active_target == str(f):
-                badge = Gtk.Label(label="Active")
-                badge.get_style_context().add_class("badge")
-                box.pack_start(badge, False, False, 0)
-                row.get_style_context().add_class("active")
-            row.add(box)
-            row.connect("clicked", self._on_variant_click, f)
-            self._variant_list.pack_start(row, False, False, 0)
-        self._variant_list.show_all()
 
-    def _on_variant_click(self, _btn, variant_path: Path):
+        for f in sorted(variants_dir.glob("*.rasi")):
+            row = Adw.ActionRow(title=f.stem)
+            row.set_activatable(True)
+            row.add_css_class("sidebar-row")
+            row._variant_path = f
+
+            link = paths.ROFI_VARIANT_LINK
+            if link.is_symlink() and os.readlink(str(link)) == str(f):
+                badge = Gtk.Label(label="Active")
+                badge.add_css_class("success")
+                row.add_suffix(badge)
+
+            row.connect("activated", self._on_variant_click)
+            self._variant_list.append(row)
+
+    def _on_variant_click(self, row):
+        variant_path = row._variant_path
         link = paths.ROFI_VARIANT_LINK
         link.unlink(missing_ok=True)
         os.symlink(str(variant_path), str(link))
+
         self._run_script(paths.SYNC_ROFI_SH, "rofi sync")
         self._refresh()
         show_toast(self, f"Rofi variant: {variant_path.stem}")

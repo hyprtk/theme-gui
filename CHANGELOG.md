@@ -3,31 +3,6 @@
 All notable changes to theme-gui are documented in this file.
 Dates are in YYYY-MM-DD format.
 
-## [0.2.0] - 2026-09-07
-
-### Changed
-
-- **Rewritten as a GTK3 glass window** — full port from GTK4/Adwaita to GTK3 so
-  theme-gui matches the hyprtk-bar ecosystem (the bar, menu, and arc-menu are
-  all GTK3). The window is now frameless, translucent and rounded (`.popup-box`)
-  like the bar's system monitor and settings dialogue, with a draggable header,
-  `mc-*` chrome and in-window toasts replacing the Adw.Toast overlay.
-- **Navigation** — the sidebar is now the monitor's glyph+label language
-  (Nerd Font glyphs from `Symbols Nerd Font`, active row filled with the theme
-  accent) driving a crossfade stack of the same eight pages.
-- **Theming** — new `theme.py` resolves the bar palette (pywal / imported /
-  manual via `bar_theme.py`) and emits GTK3 CSS scoped to the app subtree
-  (`.tg-app`) using the monitor's `.popup-box` / `.mc-*` / `.settings-*` class
-  vocabulary; standard GTK3 widgets (entries, switches, scales, colour
-  swatches, flow-box tiles) get matching translucent styling. Live re-theme on
-  bar-theme pick and wallpaper change is preserved.
-- **Page styling** — every module (wallpaper, pywal, rofi, bar, matuwall,
-  swaylock, icons, sddm) rebuilt with glass `settings-section` cards, list rows
-  with Active badges, circular colour swatches via GTK3 `ColorChooserDialog`,
-  and the swaylock preview ported to the GTK3 `draw` signal.
-- `__main__.py` sets the prgname so the Wayland window class stays
-  `dev.hyprtk.theme_gui` (Hyprland float + size windowrule still applies).
-
 ## [0.1.1] - 2026-09-07
 
 ### Changed

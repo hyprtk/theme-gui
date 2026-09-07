@@ -1,138 +1,57 @@
-"""Shared GTK3 widgets and helpers for theme-gui (monitor-style chrome)."""
+"""Shared widget utilities and base classes."""
 from __future__ import annotations
 
 import gi
-gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
-
-from gi.repository import Gtk, Pango  # noqa: E402
-
-GLYPH_FONT = "Symbols Nerd Font"
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk
 
 
-class Glyph(Gtk.Label):
-    """A Nerd Font glyph rendered at an exact pixel size.
-
-    The system font has no PUA glyphs (and maps them to the wrong characters),
-    so glyphs always render with a dedicated Nerd Font family; the size is set
-    in device units (pixels) to match Gtk.Image pixel sizes.
-    """
-
-    def __init__(self, codepoint: str, css_class: str = "", font: str = ""):
-        super().__init__(label=codepoint)
-        self._font = (font or "").strip() or GLYPH_FONT
-        if css_class:
-            self.get_style_context().add_class(css_class)
-        self.set_pixel_size(16)
-
-    def set_pixel_size(self, size: int) -> None:
-        attrs = Pango.AttrList()
-        attrs.insert(Pango.attr_family_new(self._font))
-        attrs.insert(Pango.attr_size_new_absolute(int(max(size, 10)) * Pango.SCALE))
-        self.set_attributes(attrs)
-
-
-def remove_all_children(widget) -> None:
-    """Remove every child of a GTK3 container."""
-    for child in list(widget.get_children()):
+def remove_all_children(widget):
+    """Remove all children from a GTK4 widget."""
+    while True:
+        child = widget.get_first_child()
+        if child is None:
+            break
         widget.remove(child)
 
 
-def show_toast(widget: Gtk.Widget, message: str, timeout: int = 2) -> None:
-    """Show a themed in-window toast, walking up to the ThemeGuiWindow.
-
-    Keeps the same call shape as the old Adw.Toast API so modules can report
-    results without caring which window hosts them.
-    """
+def show_toast(widget: Gtk.Widget, message: str, timeout: int = 2):
+    """Walk up the widget tree to find a ToastOverlay and show a toast."""
+    toast = Adw.Toast(title=message)
+    toast.set_timeout(timeout)
     w = widget
     while w is not None:
-        handler = getattr(w, "_show_toast", None)
-        if callable(handler):
-            handler(message, timeout)
+        if isinstance(w, Adw.ToastOverlay):
+            w.add_toast(toast)
             return
-        w = w.get_parent()
+        parent = w.get_parent() if hasattr(w, "get_parent") else None
+        w = parent
 
 
-def _scaled_pixbuf(path: str, width: int, height: int):
-    """Load an image at path, scaled to fit within width x height (contain)."""
-    import os
+class BasePage(Adw.NavigationPage):
+    """Base class for all theme-gui pages.
 
-    if not path or not os.path.isfile(path):
-        return None
-    try:
-        from gi.repository import GdkPixbuf
-
-        return GdkPixbuf.Pixbuf.new_from_file_at_scale(
-            path, width, height, True
-        )
-    except Exception:
-        return None
-
-
-class BasePage(Gtk.Box):
-    """A monitor-style page: page title + scrolled vertical body.
-
-    Subclasses build into ``self.body`` (a ``Gtk.Box``). ``section(title)``
-    creates a titled glass card that stays visually consistent with the bar's
-    system monitor.
+    Provides standard ToolbarView + HeaderBar + scrollable vertical box layout.
+    Subclasses should use ``self._box`` to add content.
     """
 
     def __init__(self, title: str, **kwargs):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self._page_title = title
-        self.set_hexpand(True)
-        self.set_vexpand(True)
+        super().__init__(title=title, **kwargs)
 
-        head = Gtk.Label(label=title, xalign=0)
-        head.get_style_context().add_class("mc-page-title")
-        head.set_margin_bottom(2)
-        self.pack_start(head, False, False, 0)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        toolbar.add_top_bar(header)
 
-        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self.body.set_margin_top(2)
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_vexpand(True)
-        scroller.add(self.body)
-        self.pack_start(scroller, True, True, 0)
+        self._box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self._box.set_margin_top(12)
+        self._box.set_margin_bottom(12)
+        self._box.set_margin_start(12)
+        self._box.set_margin_end(12)
 
-    # ── helpers ───────────────────────────────────────────────
+        self._scroll = Gtk.ScrolledWindow()
+        self._scroll.set_child(self._box)
+        self._scroll.set_vexpand(True)
 
-    def section(self, title: str | None = None) -> Gtk.Box:
-        """Create and add a glass card; optional small section title."""
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.get_style_context().add_class("settings-section")
-        box.set_hexpand(True)
-        if title:
-            head = Gtk.Label(label=title.upper(), xalign=0)
-            head.get_style_context().add_class("settings-section-title")
-            box.pack_start(head, False, False, 0)
-        self.body.pack_start(box, False, False, 0)
-        return box
-
-    def add_label(self, text: str, dim: bool = False, wrap: bool = False) -> Gtk.Label:
-        lbl = Gtk.Label(label=text, xalign=0)
-        if wrap:
-            lbl.set_line_wrap(True)
-        if dim:
-            lbl.get_style_context().add_class("dim-label")
-        self.body.pack_start(lbl, False, False, 0)
-        return lbl
-
-    def primary_button(self, label: str) -> Gtk.Button:
-        btn = Gtk.Button(label=label)
-        btn.get_style_context().add_class("settings-apply")
-        return btn
-
-    def flat_button(self, label: str) -> Gtk.Button:
-        btn = Gtk.Button(label=label)
-        btn.get_style_context().add_class("flat")
-        return btn
-
-    def toast(self, message: str, timeout: int = 2) -> None:
-        show_toast(self, message, timeout)
-
-    # ── actions triggered on page show ────────────────────────
-
-    def on_shown(self) -> None:
-        """Called when the page becomes visible (subclasses may refresh)."""
+        toolbar.set_content(self._scroll)
+        self.set_child(toolbar)

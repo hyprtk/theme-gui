@@ -1,71 +1,78 @@
-"""Matuwall wallpaper picker configuration (GTK3)."""
+"""Matuwall wallpaper picker configuration."""
 from __future__ import annotations
 
 import json
 
-import gi
-gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
+from gi.repository import Adw, Gtk
 
-from gi.repository import Gtk, Pango  # noqa: E402
-
-from .. import paths  # noqa: E402
-from ..colors import _atomic_write  # noqa: E402
-from ..widgets import BasePage, show_toast  # noqa: E402
+from .. import paths
+from ..colors import _atomic_write
+from ..widgets import BasePage, show_toast
 
 
 class MatuwallPage(BasePage):
     def __init__(self, **kwargs):
         super().__init__(title="Matuwall", **kwargs)
+
+        title = Gtk.Label(label="Matuwall Configuration")
+        title.add_css_class("heading")
+        title.set_xalign(0)
+        self._box.append(title)
+
         self._config: dict = {}
-        self._entries: dict[str, Gtk.Entry] = {}
-        self._switches: dict[str, Gtk.Switch] = {}
+        self._entries: dict[str, Adw.EntryRow] = {}
+        self._switches: dict[str, Adw.SwitchRow] = {}
 
-        main_sec = self.section("Main")
-        self._add_entry(main_sec, "wallpaper_dir", "Wallpaper Directory")
-        self._add_entry(main_sec, "thumbnail_size", "Thumbnail Size")
-        self._add_entry(main_sec, "batch_size", "Batch Size")
-        self._add_switch(main_sec, "mouse_enabled", "Mouse Enabled")
-        self._add_switch(main_sec, "keep_ui_alive", "Keep UI Alive")
+        # main section
+        main_group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self._add_entry(main_group, "wallpaper_dir", "Wallpaper Directory")
+        self._add_entry(main_group, "thumbnail_size", "Thumbnail Size")
+        self._add_entry(main_group, "batch_size", "Batch Size")
+        self._add_switch(main_group, "mouse_enabled", "Mouse Enabled")
+        self._add_switch(main_group, "keep_ui_alive", "Keep UI Alive")
+        self._box.append(main_group)
 
-        wall_sec = self.section("Wall Mode")
-        self._add_switch(wall_sec, "wall_mode_only", "Wall Mode Only")
-        self._add_entry(wall_sec, "wall_awww_flags", "Awww Transition Flags")
+        # wall section
+        wall_label = Gtk.Label(label="Wall Mode")
+        wall_label.add_css_class("heading")
+        wall_label.set_xalign(0)
+        self._box.append(wall_label)
 
-        panel_sec = self.section("Panel Mode")
-        self._add_switch(panel_sec, "panel_mode", "Panel Mode")
-        self._add_entry(panel_sec, "panel_edge", "Panel Edge")
-        self._add_entry(panel_sec, "panel_exclusive_zone", "Exclusive Zone")
+        wall_group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self._add_switch(wall_group, "wall_mode_only", "Wall Mode Only")
+        self._add_entry(wall_group, "wall_awww_flags", "Awww Transition Flags")
+        self._box.append(wall_group)
 
-        save_btn = self.primary_button("Save Configuration")
+        # panel section
+        panel_label = Gtk.Label(label="Panel Mode")
+        panel_label.add_css_class("heading")
+        panel_label.set_xalign(0)
+        self._box.append(panel_label)
+
+        panel_group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self._add_switch(panel_group, "panel_mode", "Panel Mode")
+        self._add_entry(panel_group, "panel_edge", "Panel Edge")
+        self._add_entry(panel_group, "panel_exclusive_zone", "Exclusive Zone")
+        self._box.append(panel_group)
+
+        # save button
+        save_btn = Gtk.Button(label="Save Configuration")
+        save_btn.add_css_class("suggested-action")
         save_btn.connect("clicked", self._save)
-        self.body.pack_start(save_btn, False, False, 0)
+        self._box.append(save_btn)
 
         self._load()
+        self.connect("map", lambda w: self._load())
 
-    def on_shown(self):
-        self._load()
+    def _add_entry(self, parent, key, title):
+        row = Adw.EntryRow(title=title)
+        parent.append(row)
+        self._entries[key] = row
 
-    def _add_entry(self, parent, key: str, title: str):
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        lbl = Gtk.Label(label=title, xalign=0)
-        lbl.set_size_request(160, -1)
-        row.pack_start(lbl, False, False, 0)
-        entry = Gtk.Entry()
-        entry.set_hexpand(True)
-        row.pack_start(entry, True, True, 0)
-        self._entries[key] = entry
-        parent.pack_start(row, False, False, 0)
-
-    def _add_switch(self, parent, key: str, title: str):
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        lbl = Gtk.Label(label=title, xalign=0)
-        lbl.set_hexpand(True)
-        row.pack_start(lbl, True, True, 0)
-        switch = Gtk.Switch()
-        row.pack_start(switch, False, False, 0)
-        self._switches[key] = switch
-        parent.pack_start(row, False, False, 0)
+    def _add_switch(self, parent, key, title):
+        row = Adw.SwitchRow(title=title)
+        parent.append(row)
+        self._switches[key] = row
 
     def _load(self):
         if not paths.MATUWALL_CONFIG.exists():
@@ -74,6 +81,7 @@ class MatuwallPage(BasePage):
             self._config = json.loads(paths.MATUWALL_CONFIG.read_text())
         except (json.JSONDecodeError, OSError):
             return
+
         for section in self._config.values():
             if not isinstance(section, dict):
                 continue
@@ -103,11 +111,13 @@ class MatuwallPage(BasePage):
                         pass
                     else:
                         section[key] = val
+
         for key, switch in self._switches.items():
             val = switch.get_active()
             for section in self._config.values():
                 if isinstance(section, dict) and key in section:
                     section[key] = val
+
         try:
             _atomic_write(paths.MATUWALL_CONFIG, json.dumps(self._config, indent=2))
             show_toast(self, "Matuwall config saved")

@@ -1,20 +1,19 @@
-"""Clickable grid displaying the 16-color pywal palette (GTK3)."""
+"""Clickable grid displaying the 16-color pywal palette."""
 from __future__ import annotations
 
-import gi
-gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, Gdk
 
-from gi.repository import Gtk  # noqa: E402
-
-from . import remove_all_children  # noqa: E402
-from ..colors import get_color_name, hex_to_rgb  # noqa: E402
+from . import remove_all_children
+from ..colors import get_color_name, hex_to_rgb
 
 
-class ColorGrid(Gtk.Box):
-    """Displays the 16-color pywal palette as a clickable grid of swatches."""
+class ColorGrid(Gtk.Grid):
+    """Displays the 16-color pywal palette as a clickable grid."""
 
     def __init__(self, colors: dict[str, str] | None = None, **kwargs):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6, **kwargs)
+        super().__init__(**kwargs)
+        self.set_column_spacing(6)
+        self.set_row_spacing(6)
         self._buttons: list[Gtk.Button] = []
         self._providers: list[Gtk.CssProvider] = []
         self._callback = None
@@ -22,11 +21,11 @@ class ColorGrid(Gtk.Box):
             self.set_colors(colors)
 
     def set_colors(self, colors: dict[str, str]):
-        remove_all_children(self)
+        for btn in self._buttons:
+            self.remove(btn)
         self._buttons.clear()
         self._providers.clear()
 
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         for i in range(16):
             key = f"color{i}"
             hex_val = colors.get(key, "#000000")
@@ -35,14 +34,11 @@ class ColorGrid(Gtk.Box):
 
             btn = Gtk.Button()
             btn.set_tooltip_text(f"{name}\n{hex_val}")
-            btn.set_size_request(40, 40)
+            btn.add_css_class("flat")
+            btn.set_size_request(48, 48)
 
             provider = Gtk.CssProvider()
-            css = (
-                f"button {{ background: {hex_val}; "
-                f"border-radius: 50%; min-width: 34px; min-height: 34px; "
-                f"border: 1px solid rgba(255,255,255,0.15); }}"
-            )
+            css = f"button {{ background: {hex_val}; border-radius: 22px; min-width: 44px; min-height: 44px; }}"
             provider.load_from_data(css.encode())
             btn.get_style_context().add_provider(
                 provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
@@ -52,12 +48,7 @@ class ColorGrid(Gtk.Box):
             idx = i
             btn.connect("clicked", lambda b, n=idx: self._on_click(n))
             self._buttons.append(btn)
-            if i == 8:
-                self.pack_start(row, False, False, 0)
-                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            row.pack_start(btn, False, False, 0)
-        self.pack_start(row, False, False, 0)
-        self.show_all()
+            self.attach(btn, i % 8, i // 8, 1, 1)
 
     def _on_click(self, index: int):
         if self._callback:
