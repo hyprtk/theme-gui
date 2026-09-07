@@ -9,6 +9,13 @@ Dates are in YYYY-MM-DD format.
 
 - Waybar Themes page replaced with a Bar Themes page managing hyprtk-bar
   (`~/.config/hyprtk-bar/themes/`); all waybar references removed.
+- Bar restart on theme apply no longer kills the wrapper shell (pkill pattern
+  fix) — the bar comes back reliably after applying a bar theme.
+
+### Changed
+
+- Relicensed to **GPL-2.0** (was Apache-2.0); full GPL-2.0 text added to
+  `LICENSE` and README references updated.
 
 ## [0.1.0] - 2026-09-03
 
