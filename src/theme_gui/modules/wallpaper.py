@@ -23,7 +23,6 @@ POST_ACTION_DELAY_MS = 3000
 class WallpaperPage(BasePage):
     def __init__(self, **kwargs):
         super().__init__(title="Wallpaper", **kwargs)
-        self._css_provider = None
         self._all_images: list[Path] = []
         self._thumb_map: dict[str, str] = {}
         self._loaded_count = 0
@@ -213,18 +212,7 @@ class WallpaperPage(BasePage):
         GLib.timeout_add(POST_ACTION_DELAY_MS, self._refresh_app_css)
 
     def _refresh_app_css(self):
-        from ..app import build_app_css
-        from gi.repository import Gdk
+        from ..app import refresh_app_css
 
-        if self._css_provider is None:
-            self._css_provider = Gtk.CssProvider()
-            Gtk.StyleContext.add_provider_for_display(
-                Gdk.Display.get_default(),
-                self._css_provider,
-                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-            )
-        try:
-            self._css_provider.load_from_data(build_app_css().encode())
-        except GLib.Error as exc:
-            log.warning("failed to reload app css: %s", exc)
+        refresh_app_css()
         return False

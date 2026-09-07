@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import subprocess
 from pathlib import Path
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GLib, Gtk
 
 from .. import paths
 from ..widgets import BasePage, remove_all_children, show_toast
@@ -54,8 +53,8 @@ class BarPage(BasePage):
 
         theme = cfg.get("theme") or {}
         source = theme.get("source", "pywal")
-        name = theme.get("waybar_theme") or ""
-        if source == "waybar" and name:
+        name = theme.get("theme_name") or ""
+        if source == "imported" and name:
             self._active_theme = Path(name).name
             self._active_label.set_text(f"Active theme: {self._active_theme}")
         else:
@@ -108,8 +107,8 @@ class BarPage(BasePage):
         except (OSError, json.JSONDecodeError):
             cfg = {}
         cfg.setdefault("theme", {})
-        cfg["theme"]["source"] = "waybar"
-        cfg["theme"]["waybar_theme"] = theme_name
+        cfg["theme"]["source"] = "imported"
+        cfg["theme"]["theme_name"] = theme_name
         try:
             paths.BAR_CONFIG.parent.mkdir(parents=True, exist_ok=True)
             paths.BAR_CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
@@ -120,7 +119,15 @@ class BarPage(BasePage):
 
         self._restart_bar(None)
         self._refresh()
+        # Re-theme theme-gui's own UI to the newly selected bar theme.
+        GLib.timeout_add(800, self._refresh_app_css)
         show_toast(self, f"Bar restarted with {theme_name}")
+
+    def _refresh_app_css(self):
+        from ..app import refresh_app_css
+
+        refresh_app_css()
+        return False
 
     def _restart_bar(self, btn):
         """Restart hyprtk-bar so the new theme is picked up.

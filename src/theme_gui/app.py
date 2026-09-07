@@ -11,6 +11,7 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gdk, Gtk
 
+from .bar_theme import resolve_palette as resolve_bar_palette
 from .colors import contrast_fg, parse_wal_colors
 from .config import load as load_config, save as save_config
 from .modules.icons import IconsPage
@@ -36,24 +37,30 @@ PAGES: dict[str, tuple[str, str, type]] = {
 }
 
 
-def build_app_css() -> str:
-    """Build CSS with pywal colors for buttons and UI elements."""
+def build_app_css(palette: dict | None = None) -> str:
+    """Build CSS for the theme-gui UI from the bar's resolved palette.
+
+    Falls back to pywal colors when no bar palette is given (or the bar can't
+    be read), so the app always matches the desktop theme.
+    """
+    if palette is None:
+        palette = resolve_bar_palette()
     colors = parse_wal_colors()
-    bg = colors.get("background", "#1b0b0b")
-    fg = colors.get("foreground", "#c6c2c2")
+    bg = palette.get("background") or colors.get("background", "#1b0b0b")
+    fg = palette.get("foreground") or colors.get("foreground", "#c6c2c2")
+    accent = palette.get("accent") or colors.get("color5", "#A05030")
     color1 = colors.get("color1", "#69443B")
     color4 = colors.get("color4", "#A6522D")
-    color5 = colors.get("color5", "#A05030")
     color6 = colors.get("color6", "#A16A52")
 
-    fg_on_color5 = contrast_fg(color5)
+    fg_on_accent = contrast_fg(accent)
     fg_on_color4 = contrast_fg(color4)
     fg_on_color6 = contrast_fg(color6)
     fg_on_color1 = contrast_fg(color1)
 
     return f"""
-    @define-color accent_color {color5};
-    @define-color accent_bg_color {color5};
+    @define-color accent_color {accent};
+    @define-color accent_bg_color {accent};
     @define-color accent_fg_color {fg};
     @define-color window_bg_color {bg};
     @define-color window_fg_color {fg};
@@ -91,14 +98,14 @@ def build_app_css() -> str:
     @define-color view_bg {bg};
     @define-color view_fg {fg};
 
-    /* Override Adw suggested-action buttons (pywal accent) */
+    /* Override Adw suggested-action buttons (bar accent) */
     button.suggested-action, button.suggested-action:hover {{
-        background: {color5};
-        color: {fg_on_color5};
-        border-color: {color5};
+        background: {accent};
+        color: {fg_on_accent};
+        border-color: {accent};
     }}
     button.suggested-action:disabled {{
-        background: alpha({color5}, 0.5);
+        background: alpha({accent}, 0.5);
     }}
 
     /* Override Adw flat buttons */
@@ -111,11 +118,11 @@ def build_app_css() -> str:
 
     /* Focus indicators for keyboard navigation */
     button:focus-visible {{
-        outline: 2px solid {color5};
+        outline: 2px solid {accent};
         outline-offset: 2px;
     }}
     entry:focus-visible {{
-        outline: 2px solid {color5};
+        outline: 2px solid {accent};
         outline-offset: 2px;
     }}
 
@@ -129,7 +136,7 @@ def build_app_css() -> str:
         background: alpha({fg}, 0.08);
     }}
     .sidebar-row.active {{
-        background: alpha({color5}, 0.15);
+        background: alpha({accent}, 0.15);
         font-weight: bold;
     }}
 
@@ -141,7 +148,7 @@ def build_app_css() -> str:
         border-radius: 8px;
     }}
     entry:focus {{
-        border-color: {color5};
+        border-color: {accent};
     }}
 
     /* Switches — rounded pill track */
@@ -151,7 +158,7 @@ def build_app_css() -> str:
         min-width: 44px;
     }}
     switch:checked {{
-        background: {color5};
+        background: {accent};
     }}
 
     /* Random wallpaper button — pywal accent */
@@ -166,9 +173,30 @@ def build_app_css() -> str:
 
     /* Loading spinner */
     .loading-spinner {{
-        color: {color5};
+        color: {accent};
     }}
     """
+
+
+# ── live re-theme ───────────────────────────────────────────────────────────
+
+_CSS_PROVIDER: Gtk.CssProvider | None = None
+
+
+def refresh_app_css() -> None:
+    """Re-resolve the bar palette and reload the app CSS (live re-theme)."""
+    global _CSS_PROVIDER
+    try:
+        if _CSS_PROVIDER is None:
+            _CSS_PROVIDER = Gtk.CssProvider()
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                _CSS_PROVIDER,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+            )
+        _CSS_PROVIDER.load_from_data(build_app_css().encode())
+    except GLib.Error as exc:
+        logging.getLogger(__name__).warning("failed to reload app css: %s", exc)
 
 
 class ThemeGuiApp(Adw.Application):
@@ -181,17 +209,7 @@ class ThemeGuiApp(Adw.Application):
     def _on_startup(self, app):
         sm = Adw.StyleManager.get_default()
         sm.set_color_scheme(Adw.ColorScheme.DEFAULT)
-
-        provider = Gtk.CssProvider()
-        try:
-            provider.load_from_data(build_app_css().encode())
-        except GLib.Error as exc:
-            logging.getLogger(__name__).warning("failed to load app css: %s", exc)
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(),
-            provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-        )
+        refresh_app_css()
 
     def _on_activate(self, app):
         win = ThemeGuiWindow(application=app)
