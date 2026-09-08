@@ -1,5 +1,9 @@
 # theme-gui
 
+> **ARCHIVED** — This project is no longer maintained. Its functionality has
+> been moved into **hyprtk-bar**'s built-in Theme Manager, opened from the
+> wallpaper glyph in the bar. This repository is kept for reference only.
+
 A GTK4/Adwaita theme manager for the Hyprland desktop, written in Python. It
 gives you a single window to pick a wallpaper, regenerate pywal colors, and
 apply matching themes across rofi, the hyprtk-bar, swaylock, icons, and
